@@ -1,0 +1,139 @@
+#!/usr/bin/ruby
+
+require 'json'
+require 'launchy'
+require 'nokogiri'
+
+def select_board
+
+	# Get the list of the boards the user archived
+	boards = Dir.entries(".").sort.drop(2)
+	puts "Discovered the following boards: #{boards.join(", ")}."
+
+	puts
+
+	# Prompt the user to select the board
+	print "Select the board: "; selection = gets.chomp
+
+	# Input sanitization
+	until boards.include?(selection)
+		puts "Incorrect board."
+		print "Select the board: "; selection = gets.chomp
+	end
+
+	puts
+
+	# Enter the appropriate board directory
+	Dir.chdir("./" + selection)
+	puts "Looking in:" + " " + Dir.pwd
+
+end
+
+def get_threads
+	# Get the list of the thread directories in the board directory
+	threads = Dir.entries(".").sort.drop(2)
+	puts "Discovered #{threads.count} threads."
+
+	puts
+
+	# Enter each thread and scrap its data off its JSON file
+	counter = 1
+	threads.each do |thread|
+		Dir.chdir("./" + thread)
+
+		File.open(thread + ".json", 'r') do |f|
+  			thread_hash = JSON.parse(f.read)
+  			puts "* #{counter}: Thread no. #{thread}: #{thread_hash["posts"][0]["semantic_url"]}, started on #{thread_hash["posts"][0]["now"]}, archived: #{thread_hash["posts"][0]["archived"] || 0}"
+		end
+
+		Dir.chdir("..")
+		counter += 1
+	end
+
+	return threads
+end
+
+# Enter the archive directory
+Dir.chdir("archive/4chan")
+puts "Looking in:" + " " + Dir.pwd
+
+puts
+
+# Check ARGVs
+unless ARGV.empty?
+	board = ARGV.shift
+	puts "Selected board: #{board}"
+	boards = Dir.entries(".").sort.drop(2)
+	puts "Discovered the following boards: #{boards.join(", ")}."
+	if boards.include?(board)
+		Dir.chdir("./" + board)
+		threads = get_threads()
+	else
+		puts "You don't have this board in your archive. Exiting."
+		exit
+	end
+else
+	select_board()
+	threads = get_threads()
+end
+
+
+
+is_thread_selected = "n"
+force_board_change = "n"
+
+while true
+	puts
+
+	#Let the user select the thread
+	print "Select which thread? "; selection = gets.chomp.to_i - 1
+
+	# Input sanitization
+	until selection >= 0 and selection <= threads.count
+		puts "Incorrect number."
+		print "Select which thread? "; selection = gets.chomp.to_i - 1
+	end
+
+	puts
+
+	puts "Selected thread no. #{threads[selection]}."
+
+	puts
+
+	#Go into the thread's directory
+	Dir.chdir("./" + threads[selection])
+
+	File.open(threads[selection] + ".json", 'r') do |f|
+  		thread_hash = JSON.parse(f.read)
+  		puts "Thread no.: #{threads[selection]}"
+  		puts "Semantic URL: #{thread_hash["posts"][0]["semantic_url"]}"
+  		puts "Posted by: #{thread_hash["posts"][0]["name"]}"
+  		first_post = thread_hash["posts"][0]["com"]
+  		puts Nokogiri::HTML(first_post).text
+  		#puts "First post: #{thread_hash["posts"][0]["com"]}"
+	end
+
+	puts
+
+	print "Start the browser? [y/n] "; is_thread_selected = gets.chomp
+
+	if is_thread_selected == "y" then break end
+
+	#If the user doesn't select this thread, go up a directory with all the threads for this board
+	Dir.chdir("..")
+
+	print "Select another board? [y/n] "; force_board_change = gets.chomp
+
+	if force_board_change == "y"
+		# Go back to the boards directory
+		Dir.chdir("..")
+		# Call board selection
+		select_board()
+		# Get new thread list
+		threads = get_threads()
+	end
+
+end
+
+# Launch the browser
+Launchy.open("./" + threads[selection] + ".html")
